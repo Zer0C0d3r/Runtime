@@ -5,7 +5,8 @@
 
 use std::fs;
 use std::io::{self, BufRead, BufReader};
-use std::collections::HashSet;
+use utmpx::sys::UtType;
+use utmpx::{close_database, read_next_entry};
 
 /// System metrics collector using low-level /proc filesystem access
 #[derive(Debug, Clone, PartialEq)]
@@ -16,7 +17,7 @@ pub struct SystemMetrics {
     idle_time: f64,
     /// Load averages (1min, 5min, 15min)
     load_avg: (f64, f64, f64),
-    /// Number of unique logged-in users
+    /// Number of logged-in users
     user_count: usize,
     /// System boot time as UNIX timestamp
     boot_time: u64,
@@ -45,8 +46,8 @@ impl SystemMetrics {
         // Read load averages from /proc/loadavg
         metrics.read_loadavg()?;
 
-        // Read user count from /proc/stat and utmp-like sources
-        metrics.read_users()?;
+        // Read user count from utmp database
+        metrics.read_users();
 
         // Calculate boot time from uptime
         metrics.calculate_boot_time()?;
@@ -82,108 +83,20 @@ impl SystemMetrics {
         Ok(())
     }
 
-    /// Count unique users from multiple sources to match uptime behavior
-    fn read_users(&mut self) -> io::Result<()> {
-        let mut unique_users = HashSet::new();
-
-        // Method 1: Read from /proc/*/stat to find processes with ttys
-        if let Ok(entries) = fs::read_dir("/proc") {
-            for entry in entries.flatten() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.chars().all(|c| c.is_ascii_digit()) {
-                        if let Ok(stat_content) = fs::read_to_string(entry.path().join("stat")) {
-                            let parts: Vec<&str> = stat_content.split_whitespace().collect();
-                            if parts.len() > 6 {
-                                let tty_nr: i32 = parts[6].parse().unwrap_or(0);
-                                if tty_nr > 0 {
-                                    // This process has a controlling terminal
-                                    if let Ok(status_content) = fs::read_to_string(entry.path().join("status")) {
-                                        for line in status_content.lines() {
-                                            if line.starts_with("Uid:") {
-                                                if let Some(uid_str) = line.split_whitespace().nth(1) {
-                                                    if let Ok(uid) = uid_str.parse::<u32>() {
-                                                        // Only count UIDs >= 1000 (regular users) or root (0)
-                                                        if uid >= 1000 || uid == 0 {
-                                                            unique_users.insert(uid);
-                                                        }
-                                                    }
-                                                }
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+    /// Count users from the utmp database
+    // This doesn't count unique users
+    // e.g. the same user logged in on 2
+    // different ttys will add 2 to the count
+    fn read_users(&mut self) {
+        let mut count = 0;
+        while let Ok(utmp) = read_next_entry() {
+            // UtType::USER_PROCESS is a logged in user
+            if matches!(utmp.ut_type, UtType::USER_PROCESS) {
+                count += 1;
             }
         }
-
-        // Method 2: Fallback - count login sessions from /proc/*/fd/* pointing to ptys/ttys
-        if unique_users.is_empty() {
-            if let Ok(entries) = fs::read_dir("/proc") {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        if name.chars().all(|c| c.is_ascii_digit()) {
-                            let fd_dir = entry.path().join("fd");
-                            if let Ok(fd_entries) = fs::read_dir(&fd_dir) {
-                                let mut has_terminal = false;
-                                for fd_entry in fd_entries.flatten() {
-                                    if let Ok(link_target) = fs::read_link(fd_entry.path()) {
-                                        if let Some(target_str) = link_target.to_str() {
-                                            if target_str.starts_with("/dev/pts/") ||
-                                               target_str.starts_with("/dev/tty") {
-                                                has_terminal = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if has_terminal {
-                                    if let Ok(status_content) = fs::read_to_string(entry.path().join("status")) {
-                                        for line in status_content.lines() {
-                                            if line.starts_with("Uid:") {
-                                                if let Some(uid_str) = line.split_whitespace().nth(1) {
-                                                    if let Ok(uid) = uid_str.parse::<u32>() {
-                                                        if uid >= 1000 || uid == 0 {
-                                                            unique_users.insert(uid);
-                                                        }
-                                                    }
-                                                }
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Method 3: Final fallback - use a reasonable default based on system state
-        if unique_users.is_empty() {
-            // Check if we're in a graphical session or have active terminals
-            let display_set = std::env::var("DISPLAY").is_ok();
-            let wayland_set = std::env::var("WAYLAND_DISPLAY").is_ok();
-
-            if display_set || wayland_set {
-                unique_users.insert(1000); // Assume at least one regular user
-            }
-
-            // Always count the current user if we can determine it
-            if let Ok(current_uid_str) = std::env::var("UID") {
-                if let Ok(uid) = current_uid_str.parse::<u32>() {
-                    unique_users.insert(uid);
-                }
-            }
-        }
-
-        self.user_count = if unique_users.is_empty() { 1 } else { unique_users.len() };
-        Ok(())
+        close_database();
+        self.user_count = count;
     }
 
     /// Calculate boot time from current time minus uptime
@@ -214,7 +127,7 @@ impl SystemMetrics {
         self.load_avg
     }
 
-    /// Get number of unique users
+    /// Get number of users
     pub fn user_count(&self) -> usize {
         self.user_count
     }
@@ -228,7 +141,7 @@ impl SystemMetrics {
     pub fn refresh(&mut self) -> io::Result<()> {
         self.read_uptime()?;
         self.read_loadavg()?;
-        self.read_users()?;
+        self.read_users();
         self.calculate_boot_time()?;
         Ok(())
     }
