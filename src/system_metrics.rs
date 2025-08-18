@@ -3,10 +3,10 @@
 //! This module provides precise system metrics by reading directly from the Linux
 //! /proc filesystem, matching the behavior of the standard uptime command.
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, BufRead, BufReader};
-use utmpx::sys::UtType;
-use utmpx::{close_database, read_next_entry};
+use utmpx::{close_database, read_next_entry, sys::UtType};
 
 /// System metrics collector using low-level /proc filesystem access
 #[derive(Debug, Clone, PartialEq)]
@@ -17,7 +17,7 @@ pub struct SystemMetrics {
     idle_time: f64,
     /// Load averages (1min, 5min, 15min)
     load_avg: (f64, f64, f64),
-    /// Number of logged-in users
+    /// Number of unique logged-in users
     user_count: usize,
     /// System boot time as UNIX timestamp
     boot_time: u64,
@@ -83,20 +83,27 @@ impl SystemMetrics {
         Ok(())
     }
 
-    /// Count users from the utmp database
-    // This doesn't count unique users
-    // e.g. the same user logged in on 2
-    // different ttys will add 2 to the count
+    /// Count unique users from the utmp database
     fn read_users(&mut self) {
-        let mut count = 0;
+        let mut unique_users: HashSet<Vec<u8>> = HashSet::new();
+
         while let Ok(utmp) = read_next_entry() {
             // UtType::USER_PROCESS is a logged in user
             if matches!(utmp.ut_type, UtType::USER_PROCESS) {
-                count += 1;
+                // Take ut_user up to the first null byte
+                let user_bytes: Vec<u8> = utmp
+                    .ut_user
+                    .iter()
+                    .take_while(|&&c| c != 0)
+                    .map(|&c| c as u8)
+                    .collect();
+
+                unique_users.insert(user_bytes);
             }
         }
+
         close_database();
-        self.user_count = count;
+        self.user_count = unique_users.len();
     }
 
     /// Calculate boot time from current time minus uptime
@@ -127,7 +134,7 @@ impl SystemMetrics {
         self.load_avg
     }
 
-    /// Get number of users
+    /// Get number of unique users
     pub fn user_count(&self) -> usize {
         self.user_count
     }
