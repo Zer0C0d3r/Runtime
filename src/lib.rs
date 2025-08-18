@@ -1,6 +1,5 @@
 use colored::*;
 use std::fmt::Display;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod system_metrics;
 use system_metrics::SystemMetrics;

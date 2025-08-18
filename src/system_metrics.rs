@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::{self, BufRead, BufReader};
+use std::io;
 use utmpx::{close_database, read_next_entry, sys::UtType};
 
 /// System metrics collector using low-level /proc filesystem access
