@@ -1,21 +1,12 @@
-use runtime::{Runtime, OutputFormat};
-use std::time::Duration;
-use std::thread;
 use colored::*;
+use runtime::{OutputFormat, Runtime};
+use std::thread;
+use std::time::Duration;
 
 mod cli;
 
 fn main() {
     let args = cli::parse_args();
-
-    // Handle version flag
-    if args.show_version {
-        println!("{}",
-            format!("* Runtime [Freaky Fork] {} *", env!("CARGO_PKG_VERSION"))
-                .bright_green().bold()
-        );
-        return;
-    }
 
     // Show minimal loading animation only for interactive mode
     if args.format == OutputFormat::Interactive {
@@ -38,7 +29,8 @@ fn show_fast_loading() {
     // Much faster animation - only 200ms total
     for _ in 0..8 {
         for frame in &frames {
-            print!("\r{} {}",
+            print!(
+                "\r{} {}",
                 "Loading system metrics".bright_cyan().bold(),
                 frame.bright_yellow().bold()
             );
@@ -47,7 +39,8 @@ fn show_fast_loading() {
         }
     }
 
-    println!("\r{} {}",
+    println!(
+        "\r{} {}",
         "Loading system metrics".bright_cyan().bold(),
         "Done!".bright_green().bold()
     );

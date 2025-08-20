@@ -1,6 +1,5 @@
-use std::fmt::Display;
-use std::time::{SystemTime, UNIX_EPOCH};
 use colored::*;
+use std::fmt::Display;
 
 pub mod system_metrics;
 use system_metrics::SystemMetrics;
@@ -20,9 +19,9 @@ impl Default for Runtime {
 
 impl PartialEq for Runtime {
     fn eq(&self, other: &Self) -> bool {
-        self.system == other.system &&
-        self.args.format == other.args.format &&
-        self.args.show_container == other.args.show_container
+        self.system == other.system
+            && self.args.format == other.args.format
+            && self.args.show_container == other.args.show_container
     }
 }
 
@@ -84,7 +83,8 @@ impl Runtime {
             }
         };
 
-        format!("{}, {}, {}",
+        format!(
+            "{}, {}, {}",
             color_load(load1),
             color_load(load5),
             color_load(load15)
@@ -112,7 +112,7 @@ impl Runtime {
         };
 
         format!(
-r#"
+            r#"
 +{}+
 | {}  SYSTEM UPTIME DASHBOARD  {} |
 +{}+
@@ -128,9 +128,17 @@ r#"
             "*".bright_yellow(),
             "*".bright_yellow(),
             "=".repeat(55).bright_blue().bold(),
-            current_time.format("%H:%M:%S %Z").to_string().bright_white().bold(),
+            current_time
+                .format("%H:%M:%S %Z")
+                .to_string()
+                .bright_white()
+                .bold(),
             uptime_fancy,
-            boot_datetime.format("%Y-%m-%d %H:%M:%S").to_string().bright_white().bold(),
+            boot_datetime
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+                .bright_white()
+                .bold(),
             user_count.to_string().bright_cyan().bold(),
             if user_count == 1 { "user" } else { "users" }.dimmed(),
             load_fancy,
@@ -150,8 +158,11 @@ impl Display for Runtime {
                 let idle_time = self.system.idle_time();
                 let (load1, load5, load15) = self.system.load_averages();
 
-                write!(f, "{} {:.6} {} {:.2} {:.2} {:.2}",
-                    boot_time, uptime_secs, idle_time, load1, load5, load15)
+                write!(
+                    f,
+                    "{} {:.6} {} {:.2} {:.2} {:.2}",
+                    boot_time, uptime_secs, idle_time, load1, load5, load15
+                )
             }
             OutputFormat::Pretty => {
                 // Format: "up X hours, Y minutes"
@@ -164,9 +175,14 @@ impl Display for Runtime {
                     let m = minutes as u64;
 
                     if m > 0 {
-                        write!(f, "up {} hour{}, {} minute{}",
-                            h, if h != 1 { "s" } else { "" },
-                            m, if m != 1 { "s" } else { "" })
+                        write!(
+                            f,
+                            "up {} hour{}, {} minute{}",
+                            h,
+                            if h != 1 { "s" } else { "" },
+                            m,
+                            if m != 1 { "s" } else { "" }
+                        )
                     } else {
                         write!(f, "up {} hour{}", h, if h != 1 { "s" } else { "" })
                     }
@@ -214,10 +230,24 @@ impl Display for Runtime {
 
                 let (load1, load5, load15) = self.system.load_averages();
 
-                let container_suffix = if self.args.show_container { " (container)" } else { "" };
+                let container_suffix = if self.args.show_container {
+                    " (container)"
+                } else {
+                    ""
+                };
 
-                write!(f, " {} up {}{}, {} {}, load average: {:.2}, {:.2}, {:.2}",
-                    time_str, uptime_str, container_suffix, user_count, user_str, load1, load5, load15)
+                write!(
+                    f,
+                    " {} up {}{}, {} {}, load average: {:.2}, {:.2}, {:.2}",
+                    time_str,
+                    uptime_str,
+                    container_suffix,
+                    user_count,
+                    user_str,
+                    load1,
+                    load5,
+                    load15
+                )
             }
             OutputFormat::Interactive => {
                 // Clean table format without nerd fonts
@@ -244,7 +274,7 @@ pub enum OutputFormat {
 
 impl Default for OutputFormat {
     fn default() -> Self {
-        OutputFormat::Interactive  // Default to the interactive format
+        OutputFormat::Interactive // Default to the interactive format
     }
 }
 
@@ -253,7 +283,6 @@ impl Default for OutputFormat {
 pub struct RuntimeArgs {
     pub format: OutputFormat,
     pub show_container: bool,
-    pub show_version: bool,
 }
 
 impl Default for RuntimeArgs {
@@ -261,7 +290,6 @@ impl Default for RuntimeArgs {
         Self {
             format: OutputFormat::Interactive,
             show_container: false,
-            show_version: false,
         }
     }
 }
