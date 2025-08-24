@@ -21,6 +21,8 @@ pub struct SystemMetrics {
     user_count: usize,
     /// System boot time as UNIX timestamp
     boot_time: u64,
+    /// Is the system running in a container
+    in_container: bool,
 }
 
 impl Default for SystemMetrics {
@@ -31,6 +33,7 @@ impl Default for SystemMetrics {
             load_avg: (0.0, 0.0, 0.0),
             user_count: 0,
             boot_time: 0,
+            in_container: false,
         }
     }
 }
@@ -119,6 +122,16 @@ impl SystemMetrics {
         Ok(())
     }
 
+    /// Detect container environment using cgroup markers
+    fn read_container_indicator(&mut self) {
+        let content = match fs::read_to_string("/proc/self/cgroup") {
+            Ok(content) => content,
+            Err(_) => return,
+        };
+
+        self.in_container = content.contains("docker") || content.contains("lxc") || content.contains("container");
+    }
+
     /// Get uptime in seconds with decimal precision
     pub fn uptime_seconds(&self) -> f64 {
         self.uptime_seconds
@@ -144,11 +157,17 @@ impl SystemMetrics {
         self.boot_time
     }
 
+    /// Is the system running in a container environment
+    pub fn in_container(&self) -> bool {
+        self.in_container
+    }
+
     /// Refresh all metrics
     pub fn refresh(&mut self) -> io::Result<()> {
         self.read_uptime()?;
         self.read_loadavg()?;
         self.read_users();
+        self.read_container_indicator(); // New container environment detection
         self.calculate_boot_time()?;
         Ok(())
     }

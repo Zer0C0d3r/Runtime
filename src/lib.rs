@@ -93,57 +93,55 @@ impl Runtime {
 
     /// Create a clean table layout without nerd fonts
     fn create_table(&self) -> String {
-        let border = "=".repeat(55).bright_blue().bold();
         let uptime_fancy = self.format_uptime_fancy();
         let load_fancy = self.format_load_fancy();
         let user_count = self.system.user_count();
-
         let boot_time = self.system.boot_time();
         let boot_datetime = chrono::DateTime::from_timestamp(boot_time as i64, 0)
             .unwrap_or_default()
             .with_timezone(&chrono::Local);
-
         let current_time = chrono::Local::now();
-
-        let container_status = if self.args.show_container {
-            "[CONTAINER]".bright_cyan().bold().to_string()
+        let icon = "".bright_cyan().bold();
+        let time_icon = "".bright_yellow().bold();
+        let uptime_icon = "".bright_green().bold();
+        let boot_icon = "".bright_magenta().bold();
+        let user_icon = "".bright_blue().bold();
+        let load_icon = "".bright_red().bold();
+        let border = "─".repeat(40).bright_blue().bold();
+        let mode_str = if self.system.in_container() {
+            "󰆧 Container".bright_cyan().bold()
         } else {
-            "[NATIVE]".bright_green().bold().to_string()
+            " Native".bright_green().bold()
         };
-
         format!(
-            r#"
-+{}+
-| {}  SYSTEM UPTIME DASHBOARD  {} |
-+{}+
-| Current Time    : {}               |
-| System Uptime   : {}                        |
-| Boot Time       : {}        |
-| Active Users    : {} {}                      |
-| Load Average    : {}               |
-| System Mode     : {}               |
-+{}+
-"#,
+            "\n{} {} SYSTEM UPTIME {}\n{} {} {}\n{} {} {}\n{} {} {}\n{} {} {}\n{} {} {}\n{}\n",
             border,
-            "*".bright_yellow(),
-            "*".bright_yellow(),
-            "=".repeat(55).bright_blue().bold(),
+            icon,
+            border,
+            time_icon,
+            "Time:",
             current_time
                 .format("%H:%M:%S %Z")
                 .to_string()
                 .bright_white()
                 .bold(),
+            uptime_icon,
+            "Uptime:",
             uptime_fancy,
+            boot_icon,
+            "Boot:",
             boot_datetime
                 .format("%Y-%m-%d %H:%M:%S")
                 .to_string()
                 .bright_white()
                 .bold(),
+            user_icon,
+            "Users:",
             user_count.to_string().bright_cyan().bold(),
-            if user_count == 1 { "user" } else { "users" }.dimmed(),
+            load_icon,
+            "Load:",
             load_fancy,
-            container_status,
-            "=".repeat(55).bright_blue().bold()
+            mode_str
         )
     }
 }
@@ -152,106 +150,178 @@ impl Display for Runtime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.args.format {
             OutputFormat::Raw => {
-                // Format: boot_time uptime_seconds idle_time load1 load5 load15
-                let boot_time = self.system.boot_time();
+                // Match uptime's --raw: <current time> <time since boot> <logged in users> <load averages>
+                let icon = "".bright_cyan().bold();
+                let current_time = chrono::Utc::now().timestamp();
                 let uptime_secs = self.system.uptime_seconds();
-                let idle_time = self.system.idle_time();
-                let (load1, load5, load15) = self.system.load_averages();
-
-                write!(
-                    f,
-                    "{} {:.6} {} {:.2} {:.2} {:.2}",
-                    boot_time, uptime_secs, idle_time, load1, load5, load15
-                )
-            }
-            OutputFormat::Pretty => {
-                // Format: "up X hours, Y minutes"
-                let uptime_secs = self.system.uptime_seconds();
-                let hours = uptime_secs / 3600.0;
-                let minutes = (uptime_secs % 3600.0) / 60.0;
-
-                if hours >= 1.0 {
-                    let h = hours as u64;
-                    let m = minutes as u64;
-
-                    if m > 0 {
-                        write!(
-                            f,
-                            "up {} hour{}, {} minute{}",
-                            h,
-                            if h != 1 { "s" } else { "" },
-                            m,
-                            if m != 1 { "s" } else { "" }
-                        )
-                    } else {
-                        write!(f, "up {} hour{}", h, if h != 1 { "s" } else { "" })
-                    }
-                } else {
-                    let m = minutes as u64;
-                    if m > 0 {
-                        write!(f, "up {} minute{}", m, if m != 1 { "s" } else { "" })
-                    } else {
-                        write!(f, "up less than a minute")
-                    }
-                }
-            }
-            OutputFormat::Since => {
-                // Format: "YYYY-MM-DD HH:MM:SS"
-                let boot_time = self.system.boot_time();
-                let datetime = chrono::DateTime::from_timestamp(boot_time as i64, 0)
-                    .unwrap_or_default()
-                    .with_timezone(&chrono::Local);
-                write!(f, "{}", datetime.format("%Y-%m-%d %H:%M:%S"))
-            }
-            OutputFormat::Standard => {
-                // Standard uptime format with time, uptime, users, load averages
-                let now = chrono::Local::now();
-                let time_str = now.format("%H:%M:%S");
-
-                let uptime_secs = self.system.uptime_seconds();
-                let days = uptime_secs as u64 / 86400;
-                let hours = (uptime_secs as u64 % 86400) / 3600;
-                let minutes = (uptime_secs as u64 % 3600) / 60;
-
-                let uptime_str = if days > 0 {
-                    if hours > 0 {
-                        format!("{}:{:02}", days, hours)
-                    } else {
-                        format!("{} day{}", days, if days != 1 { "s" } else { "" })
-                    }
-                } else if hours > 0 {
-                    format!("{}:{:02}", hours, minutes)
-                } else {
-                    format!("{} min", minutes)
-                };
-
                 let user_count = self.system.user_count();
-                let user_str = if user_count == 1 { "user" } else { "users" };
-
                 let (load1, load5, load15) = self.system.load_averages();
-
-                let container_suffix = if self.args.show_container {
-                    " (container)"
-                } else {
-                    ""
-                };
-
                 write!(
                     f,
-                    " {} up {}{}, {} {}, load average: {:.2}, {:.2}, {:.2}",
-                    time_str,
-                    uptime_str,
-                    container_suffix,
-                    user_count,
-                    user_str,
+                    "{} {} {} {} {:.2} {:.2} {:.2}",
+                    icon,
+                    current_time.to_string().bright_white().bold(),
+                    uptime_secs.to_string().bright_yellow().bold(),
+                    user_count.to_string().bright_green().bold(),
                     load1,
                     load5,
                     load15
                 )
             }
+            OutputFormat::Pretty => {
+                // Nerd font icon: 
+                let icon = "".bright_cyan().bold();
+                let uptime_secs = self.system.uptime_seconds();
+                let hours = uptime_secs / 3600.0;
+                let minutes = (uptime_secs % 3600.0) / 60.0;
+                if hours >= 1.0 {
+                    let h = hours as u64;
+                    let m = minutes as u64;
+                    if m > 0 {
+                        write!(
+                            f,
+                            "{} up {} hour{}, {} minute{}",
+                            icon,
+                            h.to_string().bright_yellow().bold(),
+                            if h != 1 { "s" } else { "" },
+                            m.to_string().bright_yellow().bold(),
+                            if m != 1 { "s" } else { "" }
+                        )
+                    } else {
+                        write!(
+                            f,
+                            "{} up {} hour{}",
+                            icon,
+                            h.to_string().bright_yellow().bold(),
+                            if h != 1 { "s" } else { "" }
+                        )
+                    }
+                } else {
+                    let m = minutes as u64;
+                    if m > 0 {
+                        write!(
+                            f,
+                            "{} up {} minute{}",
+                            icon,
+                            m.to_string().bright_yellow().bold(),
+                            if m != 1 { "s" } else { "" }
+                        )
+                    } else {
+                        write!(f, "{} up less than a minute", icon)
+                    }
+                }
+            }
+            OutputFormat::Since => {
+                // Nerd font icon: 
+                let icon = if self.system.in_container() {
+                    "󰆧 ".bright_cyan().bold()
+                } else {
+                    " ".bright_green().bold()
+                };
+                let datetime = chrono::DateTime::from_timestamp(self.system.boot_time() as i64, 0)
+                    .unwrap_or_default()
+                    .with_timezone(&chrono::Local);
+                write!(
+                    f,
+                    "{} {}",
+                    icon,
+                    datetime
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                        .bright_white()
+                        .bold()
+                )
+            }
+            OutputFormat::Standard => {
+                // Nerd font icon: 
+                let icon = "".bright_cyan().bold();
+                let now = chrono::Local::now();
+                let time_str = now.format("%H:%M:%S").to_string().bright_white().bold();
+                let uptime_secs = self.system.uptime_seconds();
+                let days = uptime_secs as u64 / 86400;
+                let hours = (uptime_secs as u64 % 86400) / 3600;
+                let minutes = (uptime_secs as u64 % 3600) / 60;
+                let user_count = self.system.user_count();
+                let user_str = if user_count == 1 { "user" } else { "users" };
+                let (load1, load5, load15) = self.system.load_averages();
+                let load_str = format!("{:.2}, {:.2}, {:.2}", load1, load5, load15);
+                let container_icon = if self.args.show_container && self.system.in_container() {
+                    "󰆧 ".bright_magenta().bold().to_string()
+                } else {
+                    "".to_string()
+                };
+                let uptime_str = if days > 0 {
+                    format!(
+                        "{} day{}, {} min",
+                        days.to_string().bright_yellow().bold(),
+                        if days != 1 { "s" } else { "" },
+                        minutes.to_string().bright_yellow().bold()
+                    )
+                } else if hours > 0 {
+                    format!(
+                        "{} min",
+                        (hours * 60 + minutes).to_string().bright_yellow().bold()
+                    )
+                } else {
+                    format!("{} min", minutes.to_string().bright_yellow().bold())
+                };
+                write!(
+                    f,
+                    "{} {} {}up {}{},  {} {},  load average: {}",
+                    icon,
+                    container_icon,
+                    time_str,
+                    uptime_str,
+                    if self.args.show_container && self.system.in_container() {
+                        " (container)"
+                    } else {
+                        ""
+                    },
+                    user_count.to_string().bright_green().bold(),
+                    user_str.bright_green().bold(),
+                    load_str
+                )
+            }
             OutputFormat::Interactive => {
-                // Clean table format without nerd fonts
-                write!(f, "{}", self.create_table())
+                // Minimal, icon-rich, colored dashboard
+                let icon = "".bright_cyan().bold();
+                let time_icon = "".bright_yellow().bold();
+                let uptime_icon = "".bright_green().bold();
+                let boot_icon = "".bright_magenta().bold();
+                let user_icon = "".bright_blue().bold();
+                let load_icon = "".bright_red().bold();
+                let border = "─".repeat(40).bright_blue().bold();
+                let uptime_fancy = self.format_uptime_fancy();
+                let load_fancy = self.format_load_fancy();
+                let user_count = self.system.user_count();
+                let boot_time = self.system.boot_time();
+                let boot_datetime = chrono::DateTime::from_timestamp(boot_time as i64, 0)
+                    .unwrap_or_default()
+                    .with_timezone(&chrono::Local);
+                let current_time = chrono::Local::now();
+                write!(
+                    f,
+                    "\n{} {} SYSTEM UPTIME {}\n{} {} {}\n{} {} {}\n{} {} {}\n{} {} {}\n{} {} {} {}\n",
+                    border,
+                    icon,
+                    border,
+                    time_icon,
+                    "Time:",
+                    current_time.format("%H:%M:%S %Z").to_string().bright_white().bold(),
+                    uptime_icon,
+                    "Uptime:",
+                    uptime_fancy,
+                    boot_icon,
+                    "Boot:",
+                    boot_datetime.format("%Y-%m-%d %H:%M:%S").to_string().bright_white().bold(),
+                    user_icon,
+                    "Users:",
+                    user_count.to_string().bright_cyan().bold(),
+                    load_icon,
+                    "Load:",
+                    load_fancy,
+                    if self.system.in_container() { "󰆧 Container".bright_cyan().bold() } else { " Native".bright_green().bold() }
+                )
             }
         }
     }
